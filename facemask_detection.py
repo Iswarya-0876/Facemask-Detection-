@@ -7,9 +7,6 @@ Original file is located at
     https://colab.research.google.com/drive/1_3t59eidaKLtPyx8UEk6e8JvpcFDxEsX
 """
 
-!pip install tensorflow
-
-!pip install tensorflow[and-cuda]
 
 import os
 
