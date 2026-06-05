@@ -1,5 +1,5 @@
-flask
-tensorflow
-opencv-python
+streamlit
 numpy
-scikit-learn
+opencv-python
+tensorflow
+pillow
