@@ -7,7 +7,7 @@ import tensorflow as tf
 # ----------------------------
 # Load Model
 # ----------------------------
-MODEL_PATH = "mask_detector_model.h5"   # change if your model name is different
+MODEL_PATH = "mask_detection_cnn_model.h5"   # change if your model name is different
 model = tf.keras.models.load_model(MODEL_PATH)
 
 # Labels

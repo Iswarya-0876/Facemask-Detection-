@@ -1,5 +1,6 @@
-flask
+streamlit
+streamlit-webrtc
+opencv-python-headless
 tensorflow
-opencv-python
 numpy
-scikit-learn
+av
