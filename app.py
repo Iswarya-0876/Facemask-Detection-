@@ -1,82 +1,75 @@
-from flask import Flask, render_template, Response
-import cv2
-import tensorflow as tf
+import streamlit as st
 import numpy as np
+import cv2
+from PIL import Image
+import tensorflow as tf
 
-app = Flask(__name__)
+# ----------------------------
+# Load Model
+# ----------------------------
+MODEL_PATH = "mask_detector_model.h5"   # change if your model name is different
+model = tf.keras.models.load_model(MODEL_PATH)
 
-# Load trained model
-model = tf.keras.models.load_model('mask_detection_cnn_model.h5')
+# Labels
+labels = ["Mask", "No Mask"]
 
-# Face detector
-face_cascade = cv2.CascadeClassifier(
-    cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
-)
+# ----------------------------
+# Preprocess function
+# ----------------------------
+def preprocess_image(img):
+    img = cv2.resize(img, (224, 224))  # adjust size based on your model
+    img = img.astype("float32") / 255.0
+    img = np.expand_dims(img, axis=0)
+    return img
 
-# Start webcam
-camera = cv2.VideoCapture(0)
+# ----------------------------
+# Prediction function
+# ----------------------------
+def predict_mask(img):
+    processed = preprocess_image(img)
+    prediction = model.predict(processed)[0]
+    return labels[np.argmax(prediction)], prediction
 
-def generate_frames():
-    while True:
-        success, frame = camera.read()
+# ----------------------------
+# Streamlit UI
+# ----------------------------
+st.set_page_config(page_title="Face Mask Detection", layout="centered")
 
-        if not success:
-            break
-        else:
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+st.title("😷 Face Mask Detection App")
+st.write("Upload an image or use your webcam to detect mask or no mask.")
 
-            faces = face_cascade.detectMultiScale(gray, 1.1, 4)
+option = st.radio("Choose input type:", ["Upload Image", "Use Webcam"])
 
-            for (x, y, w, h) in faces:
+# ----------------------------
+# Upload Image
+# ----------------------------
+if option == "Upload Image":
+    uploaded_file = st.file_uploader("Upload Image", type=["jpg", "jpeg", "png"])
 
-                face = frame[y:y+h, x:x+w]
+    if uploaded_file is not None:
+        image = Image.open(uploaded_file)
+        img_array = np.array(image)
 
-                face_resized = cv2.resize(face, (224, 224))
-                face_resized = face_resized.astype('float32') / 255.0
-                face_resized = np.expand_dims(face_resized, axis=0)
+        st.image(image, caption="Uploaded Image", use_column_width=True)
 
-                prediction = model.predict(face_resized)
+        label, prob = predict_mask(img_array)
 
-                label = "Mask" if prediction[0] > 0.5 else "No Mask"
+        st.subheader(f"Prediction: {label}")
+        st.write(f"Confidence: {np.max(prob)*100:.2f}%")
 
-                color = (0, 255, 0) if label == "Mask" else (0, 0, 255)
+# ----------------------------
+# Webcam
+# ----------------------------
+elif option == "Use Webcam":
+    img_file = st.camera_input("Take a picture")
 
-                cv2.rectangle(frame, (x, y), (x+w, y+h), color, 2)
+    if img_file is not None:
+        image = Image.open(img_file)
+        img_array = np.array(image)
 
-                cv2.putText(
-                    frame,
-                    label,
-                    (x, y-10),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.9,
-                    color,
-                    2
-                )
+        st.image(image, caption="Captured Image", use_column_width=True)
 
-            ret, buffer = cv2.imencode('.jpg', frame)
+        label, prob = predict_mask(img_array)
 
-            frame = buffer.tobytes()
-
-            yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
-
-
-@app.route('/')
-def home():
-    return render_template('index.html')
-
-
-@app.route('/video')
-def video():
-    return Response(
-        generate_frames(),
-        mimetype='multipart/x-mixed-replace; boundary=frame'
-    )
-
-
-if __name__ == "__main__":
-    import os
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+        st.subheader(f"Prediction: {label}")
+        st.write(f"Confidence: {np.max(prob)*100:.2f}%")
