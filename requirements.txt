@@ -4,3 +4,11 @@ opencv-python-headless
 tensorflow
 numpy
 av
+opencv-python
+keras
+pillow
+scikit-learn
+matplotlib
+protobuf
+h5py
+pandas
