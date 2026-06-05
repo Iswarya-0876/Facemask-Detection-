@@ -1,5 +1,11 @@
 streamlit
-numpy
 opencv-python
+numpy
 tensorflow
+keras
 pillow
+scikit-learn
+matplotlib
+protobuf
+h5py
+pandas
