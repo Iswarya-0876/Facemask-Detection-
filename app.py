@@ -1,75 +1,144 @@
 import streamlit as st
-import numpy as np
+from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
 import cv2
-from PIL import Image
-import tensorflow as tf
+import numpy as np
+import av
+from tensorflow.keras.models import load_model
 
-# ----------------------------
-# Load Model
-# ----------------------------
-MODEL_PATH = "mask_detection_cnn_model.h5"   # change if your model name is different
-model = tf.keras.models.load_model(MODEL_PATH)
+# =========================
+# PAGE SETTINGS
+# =========================
 
-# Labels
-labels = ["Mask", "No Mask"]
-
-# ----------------------------
-# Preprocess function
-# ----------------------------
-def preprocess_image(img):
-    img = cv2.resize(img, (224, 224))  # adjust size based on your model
-    img = img.astype("float32") / 255.0
-    img = np.expand_dims(img, axis=0)
-    return img
-
-# ----------------------------
-# Prediction function
-# ----------------------------
-def predict_mask(img):
-    processed = preprocess_image(img)
-    prediction = model.predict(processed)[0]
-    return labels[np.argmax(prediction)], prediction
-
-# ----------------------------
-# Streamlit UI
-# ----------------------------
 st.set_page_config(page_title="Face Mask Detection", layout="centered")
 
-st.title("😷 Face Mask Detection App")
-st.write("Upload an image or use your webcam to detect mask or no mask.")
+st.title("😷 Live Face Mask Detection")
+st.write("Real-time AI webcam detection using Streamlit + TensorFlow")
 
-option = st.radio("Choose input type:", ["Upload Image", "Use Webcam"])
+# =========================
+# LOAD MODEL
+# =========================
 
-# ----------------------------
-# Upload Image
-# ----------------------------
-if option == "Upload Image":
-    uploaded_file = st.file_uploader("Upload Image", type=["jpg", "jpeg", "png"])
+model = load_model("mask_detection_cnn_model.h5")
 
-    if uploaded_file is not None:
-        image = Image.open(uploaded_file)
-        img_array = np.array(image)
+# =========================
+# LOAD FACE DETECTOR
+# =========================
 
-        st.image(image, caption="Uploaded Image", use_column_width=True)
+face_cascade = cv2.CascadeClassifier(
+    cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+)
 
-        label, prob = predict_mask(img_array)
+# =========================
+# VIDEO PROCESSOR CLASS
+# =========================
 
-        st.subheader(f"Prediction: {label}")
-        st.write(f"Confidence: {np.max(prob)*100:.2f}%")
+class MaskDetector(VideoProcessorBase):
 
-# ----------------------------
-# Webcam
-# ----------------------------
-elif option == "Use Webcam":
-    img_file = st.camera_input("Take a picture")
+    def __init__(self):
+        self.frame_count = 0
 
-    if img_file is not None:
-        image = Image.open(img_file)
-        img_array = np.array(image)
+    def recv(self, frame):
 
-        st.image(image, caption="Captured Image", use_column_width=True)
+        # Convert frame to numpy array
+        img = frame.to_ndarray(format="bgr24")
 
-        label, prob = predict_mask(img_array)
+        # Frame skipping for smooth live video
+        self.frame_count += 1
 
-        st.subheader(f"Prediction: {label}")
-        st.write(f"Confidence: {np.max(prob)*100:.2f}%")
+        if self.frame_count % 3 != 0:
+            return av.VideoFrame.from_ndarray(img, format="bgr24")
+
+        # Convert to grayscale
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+        # Detect faces
+        faces = face_cascade.detectMultiScale(
+            gray,
+            scaleFactor=1.1,
+            minNeighbors=5,
+            minSize=(60, 60)
+        )
+
+        # Loop through detected faces
+        for (x, y, w, h) in faces:
+
+            face = img[y:y+h, x:x+w]
+
+            try:
+                # Resize face for model
+                face_resized = cv2.resize(face, (224, 224))
+
+                # Normalize
+                face_resized = face_resized.astype("float32") / 255.0
+
+                # Expand dimensions
+                face_resized = np.expand_dims(face_resized, axis=0)
+
+                # Prediction
+                prediction = model(face_resized, training=False).numpy()
+
+                confidence = prediction[0][0]
+
+                # =========================
+                # MASK DETECTION LOGIC
+                # =========================
+
+                if confidence > 0.5:
+                    label = "MASK"
+                    color = (0, 255, 0)   # Green
+                else:
+                    label = "NO MASK"
+                    color = (0, 0, 255)   # Red
+
+                # Draw rectangle
+                cv2.rectangle(
+                    img,
+                    (x, y),
+                    (x + w, y + h),
+                    color,
+                    3
+                )
+
+                # Put label text
+                cv2.putText(
+                    img,
+                    label,
+                    (x, y - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.9,
+                    color,
+                    2
+                )
+
+            except Exception as e:
+                print(e)
+
+        # Return processed frame
+        return av.VideoFrame.from_ndarray(img, format="bgr24")
+
+
+# =========================
+# START LIVE CAMERA
+# =========================
+
+webrtc_streamer(
+    key="mask-detection",
+
+    video_processor_factory=MaskDetector,
+
+    rtc_configuration={
+        "iceServers": [
+            {"urls": ["stun:stun.l.google.com:19302"]}
+        ]
+    },
+
+    media_stream_constraints={
+        "video": {
+            "width": 640,
+            "height": 480
+        },
+        "audio": False,
+    },
+
+    async_processing=True,
+)
