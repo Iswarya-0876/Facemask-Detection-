@@ -4,6 +4,7 @@ import cv2
 import numpy as np
 import av
 from tensorflow.keras.models import load_model
+from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
 
 # =========================
 # PAGE SETTINGS
@@ -66,30 +67,30 @@ class MaskDetector(VideoProcessorBase):
 
             try:
                 # Resize face for model
-                face_resized = cv2.resize(face, (224, 224))
+                face = cv2.cvtColor(face, cv2.COLOR_BGR2RGB)
+                face = cv2.resize(face, (224, 224))
+                face = preprocess_input(face)
 
                 # Normalize
-                face_resized = face_resized.astype("float32") / 255.0
+                face = face.astype("float32") / 255.0
 
                 # Expand dimensions
-                face_resized = np.expand_dims(face_resized, axis=0)
+                face = np.expand_dims(face, axis=0)
 
                 # Prediction
-                prediction = model(face_resized, training=False).numpy()
-
-                confidence = prediction[0][0]
+                prediction = model(face, training=False).numpy()
+                
 
                 # =========================
                 # MASK DETECTION LOGIC
                 # =========================
 
-                if confidence > 0.5:
-                    label = "MASK"
-                    color = (0, 255, 0)   # Green
-                else:
+                if prediction[0][0] > 0.5:
                     label = "NO MASK"
-                    color = (0, 0, 255)   # Red
-
+                    color = (0,0,255)
+                else:
+                    label = "MASK"
+                    color = (0,255,0)
                 # Draw rectangle
                 cv2.rectangle(
                     img,
