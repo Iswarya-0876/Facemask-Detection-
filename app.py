@@ -10,7 +10,10 @@ from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
 # PAGE SETTINGS
 # =========================
 
-st.set_page_config(page_title="Face Mask Detection", layout="centered")
+st.set_page_config(
+    page_title="Face Mask Detection",
+    layout="centered"
+)
 
 st.title("😷 Live Face Mask Detection")
 st.write("Real-time AI webcam detection using Streamlit + TensorFlow")
@@ -43,10 +46,10 @@ class MaskDetector(VideoProcessorBase):
         # Convert frame to numpy array
         img = frame.to_ndarray(format="bgr24")
 
-        # Frame skipping for smooth live video
+        # Frame skipping for smooth video
         self.frame_count += 1
 
-        if self.frame_count % 3 != 0:
+        if self.frame_count % 2 != 0:
             return av.VideoFrame.from_ndarray(img, format="bgr24")
 
         # Convert to grayscale
@@ -56,42 +59,56 @@ class MaskDetector(VideoProcessorBase):
         faces = face_cascade.detectMultiScale(
             gray,
             scaleFactor=1.1,
-            minNeighbors=5,
+            minNeighbors=4,
             minSize=(60, 60)
         )
 
-        # Loop through detected faces
+        # =========================
+        # LOOP THROUGH FACES
+        # =========================
+
         for (x, y, w, h) in faces:
 
-            face = img[y:y+h, x:x+w]
-
             try:
-                # Resize face for model
-                face = cv2.cvtColor(face, cv2.COLOR_BGR2RGB)
-                face = cv2.resize(face, (224, 224))
-                face = preprocess_input(face)
+                # Extract face
+                face = img[y:y+h, x:x+w]
 
-                # Normalize
-                face = face.astype("float32") / 255.0
+                # Convert BGR to RGB
+                face = cv2.cvtColor(face, cv2.COLOR_BGR2RGB)
+
+                # Resize for model
+                face = cv2.resize(face, (224, 224))
+
+                # Convert to float32
+                face = np.array(face, dtype="float32")
+
+                # Preprocess for MobileNetV2
+                face = preprocess_input(face)
 
                 # Expand dimensions
                 face = np.expand_dims(face, axis=0)
 
                 # Prediction
-                prediction = model(face, training=False).numpy()
-                
+                prediction = model.predict(face, verbose=0)[0][0]
+
+                print("Prediction:", prediction)
 
                 # =========================
-                # MASK DETECTION LOGIC
+                # LABEL LOGIC
                 # =========================
 
-                if prediction[0][0] > 0.5:
+                if prediction > 0.5:
                     label = "NO MASK"
-                    color = (0,0,255)
+                    color = (0, 0, 255)
+
                 else:
                     label = "MASK"
-                    color = (0,255,0)
-                # Draw rectangle
+                    color = (0, 255, 0)
+
+                # =========================
+                # DRAW RECTANGLE
+                # =========================
+
                 cv2.rectangle(
                     img,
                     (x, y),
@@ -100,19 +117,19 @@ class MaskDetector(VideoProcessorBase):
                     3
                 )
 
-                # Put label text
+                # Put text
                 cv2.putText(
                     img,
-                    label,
+                    f"{label} ({prediction:.2f})",
                     (x, y - 10),
                     cv2.FONT_HERSHEY_SIMPLEX,
-                    0.9,
+                    0.8,
                     color,
                     2
                 )
 
             except Exception as e:
-                print(e)
+                print("Error:", e)
 
         # Return processed frame
         return av.VideoFrame.from_ndarray(img, format="bgr24")
