@@ -1,7 +1,9 @@
 venv/
 __pycache__/
-*.pyc
-*.zip
-*.h5
-data/
-dataset/
+
+Facemask_dataset/
+Facemask_dataset.zip
+
+mask_detection_cnn_model.h5
+
+Python-3.10.0/

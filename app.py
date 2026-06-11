@@ -1,114 +1,125 @@
 import streamlit as st
-from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
 import cv2
-import numpy as np
 import av
+import numpy as np
+
+from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
 from tensorflow.keras.models import load_model
 from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
 
-# =========================
-# PAGE SETTINGS
-# =========================
+# ==================================================
+# PAGE CONFIG
+# ==================================================
 
 st.set_page_config(
     page_title="Face Mask Detection",
-    layout="centered"
+    page_icon="😷",
+    layout="wide"
 )
 
-st.title("😷 Live Face Mask Detection")
-st.write("Real-time AI webcam detection using Streamlit + TensorFlow")
+st.title("😷 AI Face Mask Detection")
+st.markdown(
+    "### Real-Time Face Mask Detection using TensorFlow + Streamlit"
+)
 
-# =========================
+# ==================================================
 # LOAD MODEL
-# =========================
+# ==================================================
 
-model = load_model("mask_detection_cnn_model.h5")
+@st.cache_resource
+def load_mask_model():
+    model = load_model(
+        "mask_detection.keras",
+        compile=False
+    )
+    return model
 
-# =========================
+model = load_mask_model()
+
+# ==================================================
 # LOAD FACE DETECTOR
-# =========================
+# ==================================================
 
 face_cascade = cv2.CascadeClassifier(
-    cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+    cv2.data.haarcascades +
+    "haarcascade_frontalface_default.xml"
 )
 
-# =========================
-# VIDEO PROCESSOR CLASS
-# =========================
+# ==================================================
+# VIDEO PROCESSOR
+# ==================================================
 
 class MaskDetector(VideoProcessorBase):
 
-    def __init__(self):
-        self.frame_count = 0
-
     def recv(self, frame):
 
-        # Convert frame to numpy array
         img = frame.to_ndarray(format="bgr24")
 
-        # Frame skipping for smooth video
-        self.frame_count += 1
-
-        if self.frame_count % 2 != 0:
-            return av.VideoFrame.from_ndarray(img, format="bgr24")
-
-        # Convert to grayscale
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        # Convert frame to grayscale
+        gray = cv2.cvtColor(
+            img,
+            cv2.COLOR_BGR2GRAY
+        )
 
         # Detect faces
         faces = face_cascade.detectMultiScale(
             gray,
             scaleFactor=1.1,
-            minNeighbors=4,
+            minNeighbors=5,
             minSize=(60, 60)
         )
 
-        # =========================
-        # LOOP THROUGH FACES
-        # =========================
-
+        # Loop through detected faces
         for (x, y, w, h) in faces:
 
             try:
-                # Extract face
+
                 face = img[y:y+h, x:x+w]
 
-                # Convert BGR to RGB
-                face = cv2.cvtColor(face, cv2.COLOR_BGR2RGB)
+                if face.size == 0:
+                    continue
 
-                # Resize for model
-                face = cv2.resize(face, (224, 224))
+                # Convert to RGB
+                face_rgb = cv2.cvtColor(
+                    face,
+                    cv2.COLOR_BGR2RGB
+                )
 
-                # Convert to float32
-                face = np.array(face, dtype="float32")
+                # Resize to model input size
+                face_rgb = cv2.resize(
+                    face_rgb,
+                    (224, 224)
+                )
 
-                # Preprocess for MobileNetV2
-                face = preprocess_input(face)
+                # Preprocess image
+                face_rgb = preprocess_input(
+                    face_rgb.astype("float32")
+                )
 
                 # Expand dimensions
-                face = np.expand_dims(face, axis=0)
+                face_rgb = np.expand_dims(
+                    face_rgb,
+                    axis=0
+                )
 
                 # Prediction
-                prediction = model.predict(face, verbose=0)[0][0]
+                prediction = model.predict(
+                    face_rgb,
+                    verbose=0
+                )[0][0]
 
-                print("Prediction:", prediction)
-
-                # =========================
-                # LABEL LOGIC
-                # =========================
-
+                # Classification
                 if prediction > 0.5:
+
                     label = "NO MASK"
-                    color = (0, 0, 255)
+                    color = (0, 0, 255)  # Red
 
                 else:
+
                     label = "MASK"
-                    color = (0, 255, 0)
+                    color = (0, 255, 0)  # Green
 
-                # =========================
-                # DRAW RECTANGLE
-                # =========================
-
+                # Draw rectangle
                 cv2.rectangle(
                     img,
                     (x, y),
@@ -117,7 +128,7 @@ class MaskDetector(VideoProcessorBase):
                     3
                 )
 
-                # Put text
+                # Put label
                 cv2.putText(
                     img,
                     f"{label} ({prediction:.2f})",
@@ -131,13 +142,14 @@ class MaskDetector(VideoProcessorBase):
             except Exception as e:
                 print("Error:", e)
 
-        # Return processed frame
-        return av.VideoFrame.from_ndarray(img, format="bgr24")
+        return av.VideoFrame.from_ndarray(
+            img,
+            format="bgr24"
+        )
 
-
-# =========================
-# START LIVE CAMERA
-# =========================
+# ==================================================
+# START WEBCAM
+# ==================================================
 
 webrtc_streamer(
     key="mask-detection",
@@ -146,7 +158,11 @@ webrtc_streamer(
 
     rtc_configuration={
         "iceServers": [
-            {"urls": ["stun:stun.l.google.com:19302"]}
+            {
+                "urls": [
+                    "stun:stun.l.google.com:19302"
+                ]
+            }
         ]
     },
 
