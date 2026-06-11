@@ -1,5 +1,6 @@
 venv/
 __pycache__/
+*.pyc
 
 Facemask_dataset/
 Facemask_dataset.zip
@@ -7,3 +8,5 @@ Facemask_dataset.zip
 mask_detection_cnn_model.h5
 
 Python-3.10.0/
+
+.streamlit/
